@@ -121,13 +121,18 @@ def update_Stats(model, dataloader, minority_class_labels, device, num_classes =
 
 
     e, v = torch.eig(V, eigenvectors=True)
-    sorted_idx = torch.argsort(e, dim=0, descending=True)[:,0]
+    e = e[:,0]
+    sorted_idx = torch.argsort(e, dim=0, descending=True)#[:,0]
     e, v = e[sorted_idx], v[sorted_idx]
-    Q = v[:25]
+    Q = v[:5]
+    
+    QQT = torch.matmul(Q.permute(1,0), Q)
 
+    E = torch.diag(e)
+    QQT = torch.matmul( torch.matmul(Q, E).permute(1,0) , Q)
     model.train()
 
-    return Q, C
+    return QQT, C
 
 def transfer_feats(feats, labels, Q, C, minority_labels, device):
 
@@ -158,11 +163,7 @@ def transfer_feats(feats, labels, Q, C, minority_labels, device):
         minority_label = random.choice(minority_labels)
         min_class_center = C[minority_label]
 
-        # transfered_feat = min_class_center + torch.matmul(torch.matmul(Q.permute(1,0), Q), maj_feat - maj_class_center).unsqueeze(0)
-        QQT = torch.matmul(Q.permute(1,0), Q)
-
-        transfered_feat = min_class_center + torch.matmul(QQT, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
-        # transfered_feat = (min_class_center + (maj_feat - maj_class_center) ).unsqueeze(0)
+        transfered_feat = min_class_center + torch.matmul(Q, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
 
         transfered_feats.append(transfered_feat)
         transfered_labels.append(minority_label)
