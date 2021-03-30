@@ -8,11 +8,9 @@ import torchvision
 import sys
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from sklearn.manifold import TSNE
 from datasets import sun
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import warnings
+import training_utils
 
 warnings.filterwarnings("ignore", "(Possibly )?corrupt EXIF data", UserWarning)
 
@@ -32,175 +30,6 @@ class Identity(torch.nn.Module):
     def forward(self, x):
         return x
 
-def view_centers(C, model, dataloader, num_classes = 397, fname = 'samples.png'):
-
-    """
-    C is a dict where the key is the class id and the value is the class mean
-    """
-
-    color_dict = {}
-    color_list = cm.rainbow(np.linspace(0, 1, num_classes))
-    for class_id in range(num_classes):
-        color_dict[class_id] = color_list[class_id]
-
-
-
-    encoded_samples = []
-    targets = []
-    with torch.no_grad():
-
-        for idx, (img, labels) in enumerate(dataloader):
-            img = img.to(device)
-            feats = model(img)
-            encoded_samples.append(feats.detach().cpu().numpy())
-            targets.extend(labels.detach().numpy())
-            if idx == 20:
-                break
-
-    num_embedded_samples = len(np.vstack(encoded_samples))
-    centers = []
-    class_center_ids = []
-    for idx, (class_id, center) in enumerate(C.items()):
-        center = center.detach().cpu().numpy()
-        centers.append(center)
-        class_center_ids.append(num_embedded_samples + idx )
-        targets.append(num_embedded_samples + idx )
-
-    encoded_samples = np.vstack((np.vstack(encoded_samples), np.vstack(centers)))
-    targets = np.asarray(targets)
-
-    assert (class_center_ids[-1] == len(encoded_samples)-1)
-
-    samples_embedded = TSNE(n_components=2).fit_transform(encoded_samples)
-
-    for target in range(num_classes):
-        label_idxs = (target == targets)
-        these_pts = samples_embedded[label_idxs]
-        xs = these_pts[:,0]
-        ys = these_pts[:,1]
-
-        color = color_dict[target]
-        colors = [color] * len(ys)
-
-        plt.scatter(xs, ys, c = colors, alpha = 0.04)
-
-    for idx, class_center_id in enumerate(class_center_ids):
-        class_center_embedding = samples_embedded[class_center_id]
-        x, y = class_center_embedding
-
-        color = [color_dict[idx]]
-        plt.scatter(x, y, c = color, alpha = 1.0)
-        plt.annotate('Center_{}'.format(idx), (x,y) )
-
-    plt.savefig(fname)
-    plt.clf()
-
-
-
-
-def update_Stats(model, dataloader, minority_class_labels, num_classes = 397):
-
-    print ("Calculating Statistics")
-    #C, Q
-    model.eval()
-
-    class_counts = {}
-    V = 0
-
-    C = torch.zeros(num_classes, 2048).to(device)
-
-    with torch.no_grad():
-
-        for i, (imgs, labels) in enumerate(dataloader):
-
-            imgs = imgs.to(device)
-            feats = model(imgs)
-            C[labels.detach().cpu().numpy()] = feats
-
-            for label in labels:
-                if not label.item() in class_counts:
-
-                    class_counts[label.item()] = 1
-                else:
-                    class_counts[label.item()] += 1
-
-        for idx, running_sum in enumerate(C):
-            C[idx] = running_sum / class_counts[idx]
-
-        num_instances = 0
-        for i, (imgs, labels) in enumerate(dataloader):
-
-            imgs = imgs.to(device)
-
-            majority_class_idx = [i for i, elm in enumerate(labels) if not elm in minority_class_labels]
-            majority_class_imgs = imgs[majority_class_idx]
-            class_centers = C[labels[majority_class_idx].detach().cpu().numpy()]
-
-            majority_feats = model(majority_class_imgs)
-            feat_sub_classCenter = majority_feats - class_centers
-            feat_sub_classCenter_T = feat_sub_classCenter.permute(1,0)
-            v = torch.matmul(feat_sub_classCenter_T, feat_sub_classCenter)
-            num_instances += len(majority_class_idx)
-            V += v
-
-        V /= num_instances
-
-
-    e, v = torch.eig(V, eigenvectors=True)
-    sorted_idx = torch.argsort(e, dim=0, descending=True)[:,0]
-    e, v = e[sorted_idx], v[sorted_idx]
-
-    Q = v[:150]
-    # torch.save(Q, 'Q.pt')
-    # torch.save(C, 'C.pt')
-    model.train()
-
-    # return C
-    return Q, C
-    # return None, C
-
-def transfer_feats(feats, labels, Q, C, minority_labels, device):
-
-    #
-    feature_shape = feats.shape
-    batch_size = labels.shape[0]
-
-    minority_class_idx = [i for i, elm in enumerate(labels) if elm in minority_labels]
-    majority_class_idx = [i for i, elm in enumerate(labels) if not elm in minority_labels]
-
-    # minority_feats = feats[minority_class_idx]
-    majority_feats = feats[majority_class_idx]
-    majority_feats = majority_feats.view(len(majority_feats), -1)
-
-    majority_labels = labels[majority_class_idx]
-    # minority_labels = labels[minority_class_idx].detach().cpu().numpy()
-
-    #get all class centers for majority labels
-
-    transfered_feats = []
-    transfered_labels = []
-
-    for maj_label, maj_feat in zip(majority_labels, majority_feats):
-
-        maj_class_center = C[maj_label.item()]
-        #sample from minority labels
-        minority_label = random.choice(minority_labels)
-        min_class_center = C[minority_label]
-
-        # transfered_feat = min_class_center + torch.matmul(torch.matmul(Q.permute(1,0), Q), maj_feat - maj_class_center).unsqueeze(0)
-        QQT = torch.matmul(Q.permute(1,0), Q)
-
-        transfered_feat = min_class_center + torch.matmul(QQT, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
-        # transfered_feat = (min_class_center + (maj_feat - maj_class_center) ).unsqueeze(0)
-
-        transfered_feats.append(transfered_feat)
-        transfered_labels.append(minority_label)
-
-
-    transfered_feats = torch.cat(transfered_feats, dim=0)
-    transfered_labels = torch.tensor(transfered_labels).long().to(device)
-
-    return transfered_feats, transfered_labels
 
 def validate(val_dataloader, backbone, head):
 
@@ -296,7 +125,7 @@ if __name__ == '__main__':
 
         running_epoch_loss = 0
 
-        Q, C = update_Stats(backbone, trainloader, minority_class_labels)
+        Q, C = training_utils.update_Stats(backbone, trainloader, minority_class_labels, device)
         # view_centers(C, backbone, testloader, fname = '{}_centers.png'.format(epoch_iter))
 
         for iter, (data, labels) in enumerate(trainloader):
@@ -309,7 +138,7 @@ if __name__ == '__main__':
             feats = backbone(data)
             preds = head(feats)
 
-            transfered_feats, transfered_labels = transfer_feats(feats, labels, Q, C, minority_class_labels, device)
+            transfered_feats, transfered_labels = training_utils.transfer_feats(feats, labels, Q, C, minority_class_labels, device)
 
             transfer_cls_loss = cls_criterion(head(transfered_feats), transfered_labels)
             cls_loss = cls_criterion(preds, labels)
