@@ -29,10 +29,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--save_dir", type = str, default = 'images_imbalanced_gan/' )
+    parser.add_argument("--save_dir", type = str, default = 'outputs/mnist_transfer_images_imbalanced_gan/' )
     parser.add_argument("--data_root", type = str, default = 'data/')
     parser.add_argument("--sample_interval", type = int, default = 400)
-    parser.add_argument("--image_size", type = int, default = 32)
+    parser.add_argument("--img_size", type = int, default = 64)
     parser.add_argument('--nz', type=int, default=110, help='size of the latent z vector')
     parser.add_argument('--ngf', type=int, default=64)
     parser.add_argument('--ndf', type=int, default=64)
@@ -47,53 +47,35 @@ if __name__ == '__main__':
     #training helpers
     args = parser.parse_args()
 
-    minority_class_labels = [0]
+    minority_class_labels = [0, 1]
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    train_transform = transforms.Compose([
-                    transforms.Resize(args.image_size),
-                    transforms.ToTensor(),
-                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-                    ])
 
-    trainset_pure = cifar10.CIFAR10(root='./data',
-                        train=True,
-                        download=True,
-                        transform=train_transform,
+
+    trainset_pure = mnist.MNIST(root = 'data/MNIST', train = True,
+                         download=True,
+                         transform=transforms.Compose([
+                            transforms.Resize(args.img_size),
+                            transforms.ToTensor(),
+                            transforms.Normalize((0.5,), (0.5,))]),
                         minority_classes = minority_class_labels,
-                        keep_ratio = 0.01)
-
-    # trainset_pure = mnist.MNIST(root = 'data/MNIST', train = True,
-    #                      download=True,
-    #                      transform=transforms.Compose([
-    #                         transforms.ToTensor(),
-    #                         transforms.Normalize((0.5,), (0.5,))]),
-    #                     minority_classes = minority_class_labels,
-    #                     keep_ratio = 0.01
-    #                    )
-
+                        keep_ratio = 0.01
+                       )
+    print (len(trainset_pure))
     trainloader_pure = torch.utils.data.DataLoader(trainset_pure, batch_size=args.batch_size,
                                               shuffle=True, num_workers=args.num_workers)
 
-    testset = cifar10.CIFAR10(root=args.data_root,
-                                        train=False,
-                                        download=True,
-                                        transform=train_transform,
-                                        minority_classes = None,
-                                        keep_ratio = None)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size,
-                                             shuffle=False, num_workers=args.num_workers)
+    generator = networks.Generator_MNIST(args.nz, out_channel = 1).to(device)
 
-    generator = networks._netG_CIFAR10(args.ngpu, args.nz, nc = 3).to(device)
-
-    discriminator = networks._netD_CIFAR10(args.ngpu).to(device)
-    discriminator_backbone = networks._netD_CIFAR10_Backbone(args.ngpu, nc = 3).to(device)
-    discriminator_head = networks._netD_CIFAR10_Head(10, 1).to(device)
+    discriminator = networks.Discriminator_MNIST(num_channels =1, num_classes = 10).to(device)
+    discriminator_backbone = networks.Discriminator_Backbone_MNIST(num_channels = 1).to(device)
+    discriminator_head = networks.Discriminator_Head_MNIST(num_classes = 10).to(device)
 
     dis_criterion = torch.nn.BCELoss()
     aux_criterion = torch.nn.CrossEntropyLoss()
+
 
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(itertools.chain(
@@ -106,19 +88,19 @@ if __name__ == '__main__':
 
     for epoch_iter in range(args.num_epochs):
 
-        # Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
+        Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
 
         for iter, pure_batch in enumerate ( trainloader_pure):
 
-            # generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
-            #             training_utils.train_transfer_gan(generator,
-            #                 discriminator_backbone, discriminator_head, pure_batch, device, args,
-            #                 optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
+            generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+                        training_utils.train_transfer_gan(generator,
+                            discriminator_backbone, discriminator_head, pure_batch, device, args,
+                            optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
 
-            generator, discriminator, d_loss, g_loss, accuracy = \
-                        training_utils.train_regular_gan(
-                            generator, discriminator, pure_batch, device, args,
-                            optimizer_G, optimizer_D_, dis_criterion, aux_criterion)
+            # generator, discriminator, d_loss, g_loss, accuracy = \
+            #             training_utils.train_regular_gan(
+            #                 generator, discriminator, pure_batch, device, args,
+            #                 optimizer_G, optimizer_D_, dis_criterion, aux_criterion)
             print(
                 "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
                 % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
