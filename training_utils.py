@@ -31,7 +31,7 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
             feats = model(img)
             encoded_samples.append(feats.detach().cpu().numpy())
             targets.extend(labels.detach().numpy())
-            if idx == 20:
+            if idx == 10:
                 break
 
     num_embedded_samples = len(np.vstack(encoded_samples))
@@ -74,6 +74,8 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
     plt.clf()
 
 
+
+
 def update_Stats(model, dataloader, minority_class_labels, device, num_classes = 397, num_features = 2048):
 
     print ("Calculating Statistics")
@@ -88,10 +90,15 @@ def update_Stats(model, dataloader, minority_class_labels, device, num_classes =
 
         for i, (imgs, labels) in enumerate(dataloader):
 
+            labels = labels.to(device)
             imgs = imgs.to(device)
             feats = model(imgs)
+            # dummy_tensor = torch.stack([torch.full_like(feats[0], x) for x in labels.detach().cpu().numpy()])
+            C.index_add_(0, labels, feats)
 
-            C[labels.detach().cpu().numpy()] = feats
+            # C[labels.detach().cpu().numpy()] += feats
+            # print (dummy_tensor)
+            # print (labels.detach().cpu().numpy())
 
             for label in labels:
                 if not label.item() in class_counts:

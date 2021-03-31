@@ -105,13 +105,13 @@ if __name__ == '__main__':
 
     for epoch_iter in range(args.num_epochs):
 
-        if epoch_iter > 20:
-            Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
-            training_utils.view_centers(C, discriminator_backbone, testloader, device, num_classes = 10, fname = 'class_centers_{}.png'.format(epoch_iter))
+
+        Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
+        training_utils.view_centers(C, discriminator_backbone, testloader, device, num_classes = 10, fname = 'class_centers_{}.png'.format(epoch_iter))
 
         for iter, pure_batch in enumerate ( trainloader_pure):
 
-            if epoch_iter > 20:
+            if epoch_iter > 10:
                 generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
                             training_utils.train_transfer_gan(generator,
                                 discriminator_backbone, discriminator_head, pure_batch, device, args,
@@ -121,10 +121,10 @@ if __name__ == '__main__':
                             training_utils.train_regular_gan(generator,
                                 discriminator_backbone, discriminator_head, pure_batch, device, args,
                                 optimizer_G, optimizer_D, dis_criterion, aux_criterion)
-            print(
-                "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
-                % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
-            )
+            # print(
+            #     "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
+            #     % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
+            # )
 
             batches_done = epoch_iter * len(trainloader_pure) + iter
             if batches_done % args.sample_interval == 0:
