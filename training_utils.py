@@ -6,6 +6,7 @@ from sklearn.manifold import TSNE
 import matplotlib.cm as cm
 import os
 from torchvision.utils import save_image
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 
 def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'samples.png'):
@@ -36,11 +37,12 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
     num_embedded_samples = len(np.vstack(encoded_samples))
     centers = []
     class_center_ids = []
-    for idx, (class_id, center) in enumerate(C.items()):
+
+    for class_id, center in enumerate(C):
         center = center.detach().cpu().numpy()
         centers.append(center)
-        class_center_ids.append(num_embedded_samples + idx )
-        targets.append(num_embedded_samples + idx )
+        class_center_ids.append(num_embedded_samples + class_id)
+        targets.append(num_embedded_samples + class_id )
 
     encoded_samples = np.vstack((np.vstack(encoded_samples), np.vstack(centers)))
     targets = np.asarray(targets)
@@ -124,15 +126,21 @@ def update_Stats(model, dataloader, minority_class_labels, device, num_classes =
     e = e[:,0]
     sorted_idx = torch.argsort(e, dim=0, descending=True)#[:,0]
     e, v = e[sorted_idx], v[sorted_idx]
-    Q = v[:5]
-    
-    QQT = torch.matmul(Q.permute(1,0), Q)
 
+    Q = v[:15]
+    e = e[:15]
+
+    QQT = torch.matmul(Q.permute(1,0), Q)
     E = torch.diag(e)
-    QQT = torch.matmul( torch.matmul(Q, E).permute(1,0) , Q)
+    # QQT = torch.matmul(torch.matmul(Q.permute(1,0), E), Q)
+
+    # ones = torch.ones(num_features)
+    # QQT = torch.diag(ones).to(device)
+
     model.train()
 
     return QQT, C
+    # return V, C
 
 def transfer_feats(feats, labels, Q, C, minority_labels, device):
 
@@ -164,7 +172,8 @@ def transfer_feats(feats, labels, Q, C, minority_labels, device):
         min_class_center = C[minority_label]
 
         transfered_feat = min_class_center + torch.matmul(Q, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
-
+        # dist = MultivariateNormal(min_class_center, Q)
+        # transfered_feat = dist.sample().unsqueeze(0)
         transfered_feats.append(transfered_feat)
         transfered_labels.append(minority_label)
 
@@ -175,7 +184,7 @@ def transfer_feats(feats, labels, Q, C, minority_labels, device):
     return transfered_feats, transfered_labels
 
 
-def train_regular_gan(G, D, data, device, args, generator_optim, discriminator_optim, bce_criterion, cls_criterion):
+def train_regular_gan(G, D_backbone, D_head, data, device, args, generator_optim, discriminator_optim, bce_criterion, cls_criterion):
 
     images, labels = data
     images = images.to(device)
@@ -206,8 +215,10 @@ def train_regular_gan(G, D, data, device, args, generator_optim, discriminator_o
 
     # Generate a batch of images/sample from fake
     gen_imgs = G(z)
+    gen_feats = D_backbone(gen_imgs)
 
-    validity, pred_label = D(gen_imgs)
+    validity, pred_label = D_head(gen_feats)
+
     gen_labels_ = torch.tensor(gen_labels).long().to(device)
 
     g_loss = bce_criterion(validity, valid) + cls_criterion(pred_label, gen_labels_)
@@ -221,13 +232,14 @@ def train_regular_gan(G, D, data, device, args, generator_optim, discriminator_o
     discriminator_optim.zero_grad()
 
     # Loss for real images
-
-    real_pred, real_aux = D(images)
+    real_feats = D_backbone(images)
+    real_pred, real_aux = D_head(real_feats)
 
     d_real_loss = 0.5 * (bce_criterion(real_pred, valid) +  cls_criterion(real_aux, labels) )
 
     # Loss for fake images
-    fake_pred, fake_aux = D(gen_imgs.detach())
+    fake_feats = D_backbone(gen_imgs.detach())
+    fake_pred, fake_aux = D_head(fake_feats)
     d_fake_loss = 0.5 * (bce_criterion(fake_pred, fake) + cls_criterion(fake_aux, gen_labels_) )
 
     # Total discriminator loss
@@ -244,7 +256,7 @@ def train_regular_gan(G, D, data, device, args, generator_optim, discriminator_o
 
     real_accuracy = compute_acc(real_aux, labels)
 
-    return G, D, d_loss, g_loss, real_accuracy
+    return G, D_backbone, D_head, d_loss, g_loss, real_accuracy
 
 
 def compute_acc(preds, labels):
@@ -303,6 +315,7 @@ def train_transfer_gan(G, D_backbone, D_head, data, device, args, generator_opti
     discriminator_optim.zero_grad()
 
     # Loss for real images
+
     real_feats = D_backbone(images)
     real_pred, real_aux = D_head(real_feats)
     d_real_loss = (bce_criterion(real_pred, valid) +  cls_criterion(real_aux, labels) )

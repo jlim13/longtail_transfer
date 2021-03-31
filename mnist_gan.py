@@ -47,12 +47,10 @@ if __name__ == '__main__':
     #training helpers
     args = parser.parse_args()
 
-    minority_class_labels = [0, 1]
+    minority_class_labels = [0, 1, 2, 3]
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
-
-
 
     trainset_pure = mnist.MNIST(root = 'data/MNIST', train = True,
                          download=True,
@@ -61,7 +59,7 @@ if __name__ == '__main__':
                             transforms.ToTensor(),
                             transforms.Normalize((0.5,), (0.5,))]),
                         minority_classes = minority_class_labels,
-                        keep_ratio = 0.01
+                        keep_ratio = 0.15
                        )
     print (len(trainset_pure))
     trainloader_pure = torch.utils.data.DataLoader(trainset_pure, batch_size=args.batch_size,
