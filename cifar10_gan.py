@@ -29,7 +29,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--save_dir", type = str, default = 'images_imbalanced_gan/' )
+    parser.add_argument("--save_dir", type = str, default = 'outputs/transfer_imbalance_gan/' )
     parser.add_argument("--data_root", type = str, default = 'data/')
     parser.add_argument("--sample_interval", type = int, default = 400)
     parser.add_argument("--image_size", type = int, default = 32)
@@ -42,12 +42,12 @@ if __name__ == '__main__':
     #optimizer hyperparameters
     parser.add_argument("--lr", type = float, default = 0.0002)
     parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument("--num_epochs", type = int, default = 500)
+    parser.add_argument("--num_epochs", type = int, default = 1000)
     parser.add_argument("--num_workers", type = int, default = 8)
     #training helpers
     args = parser.parse_args()
 
-    minority_class_labels = [0]
+    minority_class_labels = [0, 1]
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
@@ -63,7 +63,7 @@ if __name__ == '__main__':
                         download=True,
                         transform=train_transform,
                         minority_classes = minority_class_labels,
-                        keep_ratio = 0.01)
+                        keep_ratio = 0.1)
 
     # trainset_pure = mnist.MNIST(root = 'data/MNIST', train = True,
     #                      download=True,
@@ -102,27 +102,29 @@ if __name__ == '__main__':
                                     ),
                                     lr=args.lr, betas=(0.5, 0.999))
     #
-    optimizer_D_ = torch.optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
     for epoch_iter in range(args.num_epochs):
 
-        # Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
+
+        Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
+        training_utils.view_centers(C, discriminator_backbone, testloader, device, num_classes = 10, fname = 'class_centers_{}.png'.format(epoch_iter))
 
         for iter, pure_batch in enumerate ( trainloader_pure):
 
-            # generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
-            #             training_utils.train_transfer_gan(generator,
-            #                 discriminator_backbone, discriminator_head, pure_batch, device, args,
-            #                 optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
-
-            generator, discriminator, d_loss, g_loss, accuracy = \
-                        training_utils.train_regular_gan(
-                            generator, discriminator, pure_batch, device, args,
-                            optimizer_G, optimizer_D_, dis_criterion, aux_criterion)
-            print(
-                "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
-                % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
-            )
+            if epoch_iter > 10:
+                generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+                            training_utils.train_transfer_gan(generator,
+                                discriminator_backbone, discriminator_head, pure_batch, device, args,
+                                optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
+            else:
+                generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+                            training_utils.train_regular_gan(generator,
+                                discriminator_backbone, discriminator_head, pure_batch, device, args,
+                                optimizer_G, optimizer_D, dis_criterion, aux_criterion)
+            # print(
+            #     "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
+            #     % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
+            # )
 
             batches_done = epoch_iter * len(trainloader_pure) + iter
             if batches_done % args.sample_interval == 0:
