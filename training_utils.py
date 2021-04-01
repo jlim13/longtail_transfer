@@ -31,7 +31,7 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
             feats = model(img)
             encoded_samples.append(feats.detach().cpu().numpy())
             targets.extend(labels.detach().numpy())
-            if idx == 10:
+            if idx == 20:
                 break
 
     num_embedded_samples = len(np.vstack(encoded_samples))
@@ -60,7 +60,7 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
         color = color_dict[target]
         colors = [color] * len(ys)
 
-        plt.scatter(xs, ys, c = colors, alpha = 0.04)
+        plt.scatter(xs, ys, c = colors, alpha = 0.1)
 
     for idx, class_center_id in enumerate(class_center_ids):
         class_center_embedding = samples_embedded[class_center_id]
@@ -331,7 +331,6 @@ def train_transfer_gan(G, D_backbone, D_head, data, device, args, generator_opti
     transfered_pred, transfered_aux = D_head(transfered_features)
     valid_transfer = torch.tensor(np.ones((len(transfered_pred))), requires_grad = False).float().to(device)
     d_transfer_loss = (bce_criterion(transfered_pred, valid_transfer) + cls_criterion(transfered_aux, transfered_labels) )
-
     # Loss for fake images
     fake_feats = D_backbone(gen_imgs.detach())
     fake_pred, fake_aux = D_head(fake_feats)
