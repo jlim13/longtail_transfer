@@ -47,7 +47,7 @@ if __name__ == '__main__':
     #training helpers
     args = parser.parse_args()
 
-    minority_class_labels = [0, 1, 2, 3]
+    minority_class_labels = []
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
@@ -77,13 +77,11 @@ if __name__ == '__main__':
 
     generator = networks.Generator_MNIST(args.nz, out_channel = 1).to(device)
 
-    discriminator = networks.Discriminator_MNIST(num_channels =1, num_classes = 10).to(device)
     discriminator_backbone = networks.Discriminator_Backbone_MNIST(num_channels = 1).to(device)
     discriminator_head = networks.Discriminator_Head_MNIST(num_classes = 10).to(device)
 
     dis_criterion = torch.nn.BCELoss()
     aux_criterion = torch.nn.CrossEntropyLoss()
-
 
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(itertools.chain(
@@ -92,7 +90,6 @@ if __name__ == '__main__':
                                     ),
                                     lr=args.lr, betas=(0.5, 0.999))
     #
-    optimizer_D_ = torch.optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
     for epoch_iter in range(args.num_epochs):
 
@@ -100,13 +97,13 @@ if __name__ == '__main__':
         training_utils.view_centers(C, discriminator_backbone, testloader, device, num_classes = 10, fname = 'class_centers_{}.png'.format(epoch_iter))
 
         for iter, pure_batch in enumerate ( trainloader_pure):
-            if epoch_iter > 5:
-                generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
-                            training_utils.train_transfer_gan(generator,
-                                discriminator_backbone, discriminator_head, pure_batch, device, args,
-                                optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
-            else:
-                generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+
+            # generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+            #                 training_utils.train_transfer_gan(generator,
+            #                     discriminator_backbone, discriminator_head, pure_batch, device, args,
+            #                     optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
+
+            generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
                         training_utils.train_regular_gan(generator,
                             discriminator_backbone, discriminator_head, pure_batch, device, args,
                             optimizer_G, optimizer_D, dis_criterion, aux_criterion)
