@@ -47,7 +47,7 @@ if __name__ == '__main__':
     #training helpers
     args = parser.parse_args()
 
-    minority_class_labels = [0, 1, 2, 3]
+    minority_class_labels = [0, 1, 2]
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
@@ -59,21 +59,29 @@ if __name__ == '__main__':
                             transforms.ToTensor(),
                             transforms.Normalize((0.5,), (0.5,))]),
                         minority_classes = minority_class_labels,
-                        keep_ratio = 0.15
+                        keep_ratio = 0.1
                        )
-    print (len(trainset_pure))
     trainloader_pure = torch.utils.data.DataLoader(trainset_pure, batch_size=args.batch_size,
                                               shuffle=True, num_workers=args.num_workers)
+    testset = mnist.MNIST(root='data/MNIST',
+                            train=False,
+                            download=True,
+                            transform=transforms.Compose([
+                               transforms.Resize(args.img_size),
+                               transforms.ToTensor(),
+                               transforms.Normalize((0.5,), (0.5,))]),
+                            minority_classes = None,
+                            keep_ratio = None)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size,
+                                             shuffle=False, num_workers=args.num_workers)
 
     generator = networks.Generator_MNIST(args.nz, out_channel = 1).to(device)
 
-    discriminator = networks.Discriminator_MNIST(num_channels =1, num_classes = 10).to(device)
     discriminator_backbone = networks.Discriminator_Backbone_MNIST(num_channels = 1).to(device)
     discriminator_head = networks.Discriminator_Head_MNIST(num_classes = 10).to(device)
 
     dis_criterion = torch.nn.BCELoss()
     aux_criterion = torch.nn.CrossEntropyLoss()
-
 
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(0.5, 0.999))
     optimizer_D = torch.optim.Adam(itertools.chain(
@@ -82,27 +90,28 @@ if __name__ == '__main__':
                                     ),
                                     lr=args.lr, betas=(0.5, 0.999))
     #
-    optimizer_D_ = torch.optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
     for epoch_iter in range(args.num_epochs):
 
         Q, C = training_utils.update_Stats(discriminator_backbone, trainloader_pure, minority_class_labels, device, num_classes = 10, num_features = 1024)
+        # training_utils.view_centers(C, discriminator_backbone, testloader, device, num_classes = 10, fname = 'class_centers_{}.png'.format(epoch_iter))
 
         for iter, pure_batch in enumerate ( trainloader_pure):
 
             generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
-                        training_utils.train_transfer_gan(generator,
-                            discriminator_backbone, discriminator_head, pure_batch, device, args,
-                            optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
+                            training_utils.train_transfer_gan(generator,
+                                discriminator_backbone, discriminator_head, pure_batch, device, args,
+                                optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
 
-            # generator, discriminator, d_loss, g_loss, accuracy = \
-            #             training_utils.train_regular_gan(
-            #                 generator, discriminator, pure_batch, device, args,
-            #                 optimizer_G, optimizer_D_, dis_criterion, aux_criterion)
-            print(
-                "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
-                % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
-            )
+            # generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+            #             training_utils.train_regular_gan(generator,
+            #                 discriminator_backbone, discriminator_head, pure_batch, device, args,
+            #                 optimizer_G, optimizer_D, dis_criterion, aux_criterion)
+
+            # print(
+            #     "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
+            #     % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)
+            # )
 
             batches_done = epoch_iter * len(trainloader_pure) + iter
             if batches_done % args.sample_interval == 0:
@@ -114,3 +123,6 @@ if __name__ == '__main__':
                     outdir = args.save_dir,
                     device = device,
                     args = args)
+
+        test_set_acc = training_utils.validate(testloader, discriminator_backbone, discriminator_head, device)
+        print (test_set_acc)

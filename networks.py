@@ -183,13 +183,6 @@ class _netD_CIFAR10_Backbone(nn.Module):
             nn.Dropout(0.5, inplace=False),
         )
         self.linear_layer = nn.Linear(4*4*512, 1024)
-        # discriminator fc
-        # self.fc_dis = nn.Linear(4*4*512, num_discrim_classes)
-        # # aux-classifier fc
-        # self.fc_aux = nn.Linear(4*4*512, num_classes)
-        # # softmax and sigmoid
-        # self.softmax = nn.Softmax()
-        # self.sigmoid = nn.Sigmoid()
 
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
@@ -211,6 +204,7 @@ class _netD_CIFAR10_Backbone(nn.Module):
             conv5 = self.conv5(conv4)
             conv6 = self.conv6(conv5)
             flat6 = conv6.view(-1, 4*4*512)
+
 
         return self.linear_layer(flat6)
 
@@ -330,7 +324,7 @@ class Discriminator_Head_MNIST(nn.Module):
         cls_logits = self.cls(input)
 
         validity = self.out(self.valid(input)).squeeze(1)
-        
+
         return validity, cls_logits
 
 class Discriminator_MNIST(nn.Module):

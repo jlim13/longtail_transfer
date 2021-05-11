@@ -189,7 +189,7 @@ def transfer_feats(feats, labels, Q, C, minority_labels, device):
 
         transfered_feats.append(transfered_feat)
         transfered_labels.append(minority_label)
-        
+
     transfered_feats = torch.cat(transfered_feats, dim=0)
     transfered_labels = torch.tensor(transfered_labels).long().to(device)
 

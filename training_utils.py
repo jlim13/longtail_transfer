@@ -31,7 +31,7 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
             feats = model(img)
             encoded_samples.append(feats.detach().cpu().numpy())
             targets.extend(labels.detach().numpy())
-            if idx == 10:
+            if idx == 20:
                 break
 
     num_embedded_samples = len(np.vstack(encoded_samples))
@@ -60,7 +60,7 @@ def view_centers(C, model, dataloader, device, num_classes = 397, fname = 'sampl
         color = color_dict[target]
         colors = [color] * len(ys)
 
-        plt.scatter(xs, ys, c = colors, alpha = 0.04)
+        plt.scatter(xs, ys, c = colors, alpha = 0.1)
 
     for idx, class_center_id in enumerate(class_center_ids):
         class_center_embedding = samples_embedded[class_center_id]
@@ -178,7 +178,10 @@ def transfer_feats(feats, labels, Q, C, minority_labels, device):
         minority_label = random.choice(minority_labels)
         min_class_center = C[minority_label]
 
-        transfered_feat = min_class_center + torch.matmul(Q, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
+        # transfered_feat = min_class_center + torch.matmul(Q, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
+        transfered_feat = (min_class_center + (maj_feat - maj_class_center)).unsqueeze(0)
+        
+
         # dist = MultivariateNormal(min_class_center, Q)
         # transfered_feat = dist.sample().unsqueeze(0)
         transfered_feats.append(transfered_feat)
@@ -331,7 +334,6 @@ def train_transfer_gan(G, D_backbone, D_head, data, device, args, generator_opti
     transfered_pred, transfered_aux = D_head(transfered_features)
     valid_transfer = torch.tensor(np.ones((len(transfered_pred))), requires_grad = False).float().to(device)
     d_transfer_loss = (bce_criterion(transfered_pred, valid_transfer) + cls_criterion(transfered_aux, transfered_labels) )
-
     # Loss for fake images
     fake_feats = D_backbone(gen_imgs.detach())
     fake_pred, fake_aux = D_head(fake_feats)
@@ -375,3 +377,31 @@ def sample_image(generator, n_row, batches_done, outdir, device, args):
 
     out_im = os.path.join(outdir, '{}.png'.format(batches_done))
     save_image(gen_imgs.data, out_im, nrow=n_row, normalize=True)
+
+
+def validate(val_dataloader, backbone, head, device):
+
+    correct = 0
+    total = 0
+
+    backbone.eval()
+
+    with torch.no_grad():
+
+        for iter, (data, labels) in enumerate(val_dataloader):
+            data = data.to(device)
+            labels = labels.to(device)
+
+            feats = backbone(data)
+
+            _, preds = head(feats)
+            _, predicted = torch.max(preds.data, 1)
+
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    accuracy = correct / total
+
+    backbone.train()
+
+    return accuracy
