@@ -47,7 +47,7 @@ if __name__ == '__main__':
     #training helpers
     args = parser.parse_args()
 
-    minority_class_labels = []
+    minority_class_labels = [0,1,2,3]
 
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
@@ -102,14 +102,14 @@ if __name__ == '__main__':
 
         for iter, pure_batch in enumerate ( trainloader_pure):
             #
-            # generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
-            #                 training_utils.train_transfer_gan(generator,
-            #                     discriminator_backbone, discriminator_head, pure_batch, device, args,
-            #                     optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
             generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
-                            training_utils.train_regular_gan(generator,
+                            training_utils.train_transfer_gan(generator,
                                 discriminator_backbone, discriminator_head, pure_batch, device, args,
-                                optimizer_G, optimizer_D, dis_criterion, aux_criterion)
+                                optimizer_G, optimizer_D, dis_criterion, aux_criterion, Q, C, minority_class_labels)
+            # generator, discriminator_backbone, discriminator_head, d_loss, g_loss, accuracy = \
+            #                 training_utils.train_regular_gan(generator,
+            #                     discriminator_backbone, discriminator_head, pure_batch, device, args,
+            #                     optimizer_G, optimizer_D, dis_criterion, aux_criterion)
             print(
                 "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [Real Accuracy: %f]"
                 % (epoch_iter+1, args.num_epochs, iter, len(trainloader_pure), d_loss.item(), g_loss.item(), accuracy)

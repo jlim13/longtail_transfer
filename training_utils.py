@@ -178,7 +178,10 @@ def transfer_feats(feats, labels, Q, C, minority_labels, device):
         minority_label = random.choice(minority_labels)
         min_class_center = C[minority_label]
 
-        transfered_feat = min_class_center + torch.matmul(Q, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
+        # transfered_feat = min_class_center + torch.matmul(Q, (maj_feat - maj_class_center).squeeze(0) ).unsqueeze(0)
+        transfered_feat = (min_class_center + (maj_feat - maj_class_center)).unsqueeze(0)
+        
+
         # dist = MultivariateNormal(min_class_center, Q)
         # transfered_feat = dist.sample().unsqueeze(0)
         transfered_feats.append(transfered_feat)
@@ -374,3 +377,31 @@ def sample_image(generator, n_row, batches_done, outdir, device, args):
 
     out_im = os.path.join(outdir, '{}.png'.format(batches_done))
     save_image(gen_imgs.data, out_im, nrow=n_row, normalize=True)
+
+
+def validate(val_dataloader, backbone, head, device):
+
+    correct = 0
+    total = 0
+
+    backbone.eval()
+
+    with torch.no_grad():
+
+        for iter, (data, labels) in enumerate(val_dataloader):
+            data = data.to(device)
+            labels = labels.to(device)
+
+            feats = backbone(data)
+
+            _, preds = head(feats)
+            _, predicted = torch.max(preds.data, 1)
+
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    accuracy = correct / total
+
+    backbone.train()
+
+    return accuracy
